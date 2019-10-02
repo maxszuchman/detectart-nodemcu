@@ -312,6 +312,10 @@ void loop()
 
 // INDICADOR SONORO //////////////////////////////////////////
 
+void apagarAlarmaSonora() {
+  alarmaSonoraEncendida = false;  
+}
+
 // Esto es para poder hacer sonar la alarma por más de 20 segundos sin bloquear el thread, ya que tone no funciona con más de este tiempo
 void sonarAlarmaPor(int time) {
 
