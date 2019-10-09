@@ -8,6 +8,18 @@
 
 #define PinLED 2
 
+// CONSTANTES TEMPORALES /////
+const unsigned long UN_MINUTO = 60000;
+const unsigned long CINCO_SEGUNDOS = 5000;
+const unsigned long TRES_SEGUNDOS = 3000;
+//////////////////////////////
+
+// PULSADOR //////////////////
+#define PULSADOR D6
+bool pulsadorEncendido;
+unsigned long tiempoInicioPulsadorEncendido;
+//////////////////////////////
+
 // INDICADOR SONORO //////////
 #define BUZZER D2
 #define NOTE 440
@@ -30,7 +42,6 @@ unsigned long previousMillis;
 //////////////////////////////
 
 // ALARMA SONORA /////////////
-const unsigned long UN_MINUTO = 60000;
 unsigned long millisAlEncenderAlarma;
 unsigned long previousMillisAlarmaSonora;
 bool alarmaSonoraEncendida = false;
@@ -74,19 +85,91 @@ void setup() {
   strip.begin();
   pinMode(PinLED, OUTPUT);
   //////////////////////////////////////
-  
+
+  pinMode(PULSADOR, INPUT);
+  client.setTimeout(1000);   // Timeout para la conexión al Wifi
+  http.setTimeout(1000);
+
+  ledVerde();   // Inicializamos el led en el color "todo está bien"
   Serial.begin(115200);
-    
-  delay(4000);
-  configAsAccessPoint();
   
+  delay(1000);
+  
+  // setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
+
+  setEstadoNormal();
+}
+
+void loop() 
+{
+
+  if (estadoApareamiento) {
+
+    titilar(AMARILLO);
+    server.handleClient();  
+  } 
+  
+  else if (estadoNormal) {
+
+    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+      setEstadoApareamiento();
+      return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
+    }
+        
+    digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
+
+    if (http.begin(client, completeURL.c_str())) {  // HTTP
+  
+      Serial.println("\n[HTTP] Sending a GET request to " + completeURL);
+      
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+  
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] Response Status Code: %d\n", httpCode);
+  
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println("[HTTP] Response: " + payload);
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        setEstadoSinConexion();
+      }
+  
+      http.end();
+  
+    } else {
+      Serial.printf("[HTTP] Unable to connect\n");
+    }
+  
+    digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
+    delay(10000);
+  }
+
+  else if (estadoAlarma) {
+
+    titilar(ROJO);
+    sonarAlarmaPor(UN_MINUTO);
+    
+    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+      setEstadoNormal();
+    }
+  }
+
+  else if (estadoSinConexion) {
+    
+  }
+  
 }
 
 void configAsAccessPoint() {
 
-    setEstadoApareamiento();
     Serial.println("Configuring access point...");
     WiFi.softAP(APssid, APpassword);
   
@@ -253,62 +336,34 @@ void showAvailableNetworks() {
     Serial.println();
 }
 
-void loop() 
-{
+// PULSADOR //////////////////////////////////////////////////
 
-  if (estadoApareamiento) {
+boolean pulsadorEncendidoPor(int time) {
 
-    titilar(AMARILLO);
-    server.handleClient();  
-  } 
-  
-  else if (estadoNormal) {
-    
-    digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
-    
-    if (http.begin(client, completeURL.c_str())) {  // HTTP
-  
-      Serial.println("\n[HTTP] Sending a GET request to " + completeURL);
+  if (digitalRead(PULSADOR) == LOW) {
+    pulsadorEncendido = false;
+    return pulsadorEncendido;
+  }
+
+  if (!pulsadorEncendido) {
+    // Se encendió el pulsador por primera vez
+    tiempoInicioPulsadorEncendido = millis();
+    pulsadorEncendido = true;
+
+  } else {
+
+    // Chequeamos si el tiempo que el pulsador estuvo apretado es igual o mayor al tiempo que queremos medir
+    if ((unsigned long)(millis() - tiempoInicioPulsadorEncendido) >= time) {
       
-      // start connection and send HTTP header
-      int httpCode = http.GET();
-  
-      // httpCode will be negative on error
-      if (httpCode > 0) {
-        // HTTP header has been send and Server response header has been handled
-        Serial.printf("[HTTP] Response Status Code: %d\n", httpCode);
-  
-        // file found at server
-        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-          String payload = http.getString();
-          Serial.println("[HTTP] Response: " + payload);
-        }
-      } else {
-        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-        setEstadoSinConexion();
-      }
-  
-      http.end();
-  
-    } else {
-      Serial.printf("[HTTP} Unable to connect\n");
+      pulsadorEncendido = false;  // Reseteamos la variable aún si la persona está apretando el botón, por consistencia
+      return true;
     }
-  
-    digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
-    delay(10000);
   }
 
-  else if (estadoAlarma) {
-
-    titilar(ROJO);
-    sonarAlarmaPor(UN_MINUTO);
-  }
-
-  else if (estadoSinConexion) {
-    
-  }
-  
+  return false;
 }
+
+//////////////////////////////////////////////////////////////
 
 // INDICADOR SONORO //////////////////////////////////////////
 
@@ -404,6 +459,7 @@ void setEstadoNormal() {
 
   // CU 11
   ledVerde();
+  noTone(BUZZER);   // Apagar alarma si suena
 }
 
 void setEstadoSinConexion() {
@@ -426,6 +482,10 @@ void setEstadoApareamiento() {
   estadoApareamiento = true;
   estadoDefectuoso = false;
   estadoAlarma = false;
+
+  // Ya hacemos titilar el led, ya que configurar como access point lleva un tiempo, y sino obligamos al usuario a seguir apretando el pulsador
+  titilar(AMARILLO);
+  configAsAccessPoint();
 }
 
 void setEstadoDefectuoso() {
