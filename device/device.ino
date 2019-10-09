@@ -84,13 +84,11 @@ void setup() {
   strip.setBrightness(255);
   strip.begin();
   pinMode(PinLED, OUTPUT);
+  ledVerde();   // Inicializamos el led en el color "todo está bien"
   //////////////////////////////////////
 
   pinMode(PULSADOR, INPUT);
-  client.setTimeout(1000);   // Timeout para la conexión al Wifi
-  http.setTimeout(1000);
 
-  ledVerde();   // Inicializamos el led en el color "todo está bien"
   Serial.begin(115200);
   
   delay(1000);
@@ -98,9 +96,9 @@ void setup() {
   // setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
-
-  // setEstadoNormal();
-  setEstadoSinConexion();
+  // setEstadoSinConexion();
+  setEstadoNormal();
+  
 }
 
 void loop() 
@@ -147,6 +145,10 @@ void loop()
   
     } else {
       Serial.printf("[HTTP] Unable to connect\n");
+      
+      // CU 16
+      tone(BUZZER, NOTE, 5000);
+      setEstadoSinConexion();
     }
   
     digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
@@ -476,10 +478,7 @@ void setEstadoSinConexion() {
   estadoAlarma = false;
 
   // CU 12
-  ledAmarillo();
-  
-  // CU 16
-  tone(BUZZER, NOTE, 5000);
+  ledAmarillo();  
 }
 
 void setEstadoApareamiento() {
