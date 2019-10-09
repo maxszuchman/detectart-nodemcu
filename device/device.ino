@@ -99,7 +99,8 @@ void setup() {
   // setEstadoDefectuoso();
   // setEstadoAlarma();
 
-  setEstadoNormal();
+  // setEstadoNormal();
+  setEstadoSinConexion();
 }
 
 void loop() 
@@ -163,7 +164,12 @@ void loop()
   }
 
   else if (estadoSinConexion) {
-    
+
+    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+      noTone(BUZZER);
+      setEstadoApareamiento();
+      return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
+    }
   }
   
 }
@@ -485,6 +491,7 @@ void setEstadoApareamiento() {
 
   // Ya hacemos titilar el led, ya que configurar como access point lleva un tiempo, y sino obligamos al usuario a seguir apretando el pulsador
   titilar(AMARILLO);
+  tone(BUZZER, NOTE, 200);
   configAsAccessPoint();
 }
 
