@@ -48,10 +48,11 @@ bool alarmaSonoraEncendida = false;
 //////////////////////////////
 
 // ACCESS POINT //////////////
-#define APSSID "Experta_Seguros"
+#define APSSID "EXPERTA_"
 #define APPSK  "123456789"  // 8 CARACTERES COMO MINIMO!!!
-const char *APssid = APSSID;
+char APssid[40];
 const char *APpassword = APPSK;
+byte mac[6];
 //////////////////////////////
 
 // DATOS DE RED A CONECTARSE ////
@@ -65,6 +66,17 @@ String completeURL;
 
 const String ENDPOINT = "/reverse/";
 const String DATA = "12345";
+/////////////////////////////////
+
+// MULTIPLEXOR //////////////////
+const int muxSIG = A0;
+const int muxS0 = D5;
+const int muxS1 = D6;
+const int muxS2 = D7;
+const int muxS3 = D8;
+const int SENSORS_LENGTH = 2;
+
+int sensors[] = {0,0};
 /////////////////////////////////
 
 // CONSTANTES DE ESTADO /////////
@@ -87,22 +99,28 @@ void setup() {
   ledVerde();   // Inicializamos el led en el color "todo está bien"
   //////////////////////////////////////
 
+  // INICIALIZAR MULTIPLEXOR PARA LEER SENSORES //
+  pinMode(muxS0, OUTPUT);
+  pinMode(muxS1, OUTPUT);
+  pinMode(muxS2, OUTPUT);
+  pinMode(muxS3, OUTPUT);
+  ////////////////////////////////////////////////
+   
   pinMode(PULSADOR, INPUT);
 
   Serial.begin(115200);
   
   delay(1000);
   
-  // setEstadoApareamiento();
+  setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
   // setEstadoSinConexion();
-  setEstadoNormal();
+  // setEstadoNormal();
   
 }
 
-void loop() 
-{
+void loop() {
 
   if (estadoApareamiento) {
 
@@ -116,9 +134,38 @@ void loop()
       setEstadoApareamiento();
       return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
     }
+
+    leerSensores();
         
     digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
+    enviarDatosAlServidor();
+    digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
+    delay(10000);
+    
+  }
 
+  else if (estadoAlarma) {
+
+    titilar(ROJO);
+    sonarAlarmaPor(UN_MINUTO);
+    
+    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+      setEstadoNormal();
+    }
+  }
+
+  else if (estadoSinConexion) {
+
+    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+      noTone(BUZZER);
+      setEstadoApareamiento();
+      return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
+    }
+  }
+  
+}
+
+void enviarDatosAlServidor() {
     if (http.begin(client, completeURL.c_str())) {  // HTTP
   
       Serial.println("\n[HTTP] Sending a GET request to " + completeURL);
@@ -151,43 +198,56 @@ void loop()
       setEstadoSinConexion();
     }
   
-    digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
-    delay(10000);
-  }
-
-  else if (estadoAlarma) {
-
-    titilar(ROJO);
-    sonarAlarmaPor(UN_MINUTO);
-    
-    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
-      setEstadoNormal();
-    }
-  }
-
-  else if (estadoSinConexion) {
-
-    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
-      noTone(BUZZER);
-      setEstadoApareamiento();
-      return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
-    }
-  }
-  
 }
 
 void configAsAccessPoint() {
 
+    WiFi.macAddress(mac);
+    String macString = macToString(mac);
+    char macCharArr[19];
+    macString.toCharArray(macCharArr, 19);
+    
+    strcpy(APssid, APSSID);
+    strcat(APssid, macCharArr);
+    
     Serial.println("Configuring access point...");
     WiFi.softAP(APssid, APpassword);
+
+    Serial.print("Access Point SSID: ");
+    Serial.println(APssid);
   
     IPAddress myIP = WiFi.softAPIP();
     Serial.print("Access Point IP address: ");
     Serial.println(myIP);
     
+    Serial.print("MAC Address: ");
+    Serial.print(mac[5],HEX);
+    Serial.print(":");
+    Serial.print(mac[4],HEX);
+    Serial.print(":");
+    Serial.print(mac[3],HEX);
+    Serial.print(":");
+    Serial.print(mac[2],HEX);
+    Serial.print(":");
+    Serial.print(mac[1],HEX);
+    Serial.print(":");
+    Serial.println(mac[0],HEX);
+    
     server.on("/connectionData/", HTTP_POST, handleConnectionData);
     server.begin();
     Serial.println("HTTP server started");
+}
+
+String macToString(byte ar[]) {
+  String s;
+  for (int i = 5; i >= 0; --i)
+  {
+    char buf[3];
+    sprintf(buf, "%2X", ar[i]);
+    s += buf;
+    if (i > 0) s += ':';
+  }
+  return s;
 }
 
 void handleConnectionData() {
@@ -269,7 +329,7 @@ bool saveConfig(String ssid, String password) {
   
   json["ssid"] = ssid;
   json["password"] = password;
-  json["url"] = "http://tranquil-headland-60104.herokuapp.com";
+  json["url"] = "https://still-shelf-00010.herokuapp.com";
   
   Serial.println("\nSaving connection data into memory:");
   serializeJsonPretty(json, Serial);
@@ -343,6 +403,36 @@ void showAvailableNetworks() {
     
     Serial.println();
 }
+
+
+// MULTIPLEXOR ///////////////////////////////////////////////
+
+void setMuxChannel(byte channel) {
+   digitalWrite(muxS0, bitRead(channel, 0));
+   digitalWrite(muxS1, bitRead(channel, 1));
+   //digitalWrite(muxS2, bitRead(channel, 2));
+   //digitalWrite(muxS3, bitRead(channel, 3));
+}
+
+void leerSensores() {
+    
+    for (byte i = 0; i < SENSORS_LENGTH; i++) {
+        setMuxChannel(i);
+        sensors[i] = analogRead(muxSIG);
+        Serial.print(sensors[i]);
+        Serial.print("\t");
+    }
+    Serial.print("\n");
+}
+
+int getCO() {
+  return sensors[0];
+}
+
+int getGas() {
+  return sensors[1];
+}
+//////////////////////////////////////////////////////////////
 
 // PULSADOR //////////////////////////////////////////////////
 
