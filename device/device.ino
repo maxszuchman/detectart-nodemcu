@@ -12,6 +12,13 @@
 const unsigned long UN_MINUTO = 60000;
 const unsigned long CINCO_SEGUNDOS = 5000;
 const unsigned long TRES_SEGUNDOS = 3000;
+
+const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
+//////////////////////////////
+
+// DELAY NO BLOQUEANTE ///////
+bool esperando;
+unsigned long tiempoInicioEspera;
 //////////////////////////////
 
 // PULSADOR //////////////////
@@ -45,6 +52,7 @@ unsigned long previousMillis;
 unsigned long millisAlEncenderAlarma;
 unsigned long previousMillisAlarmaSonora;
 bool alarmaSonoraEncendida = false;
+bool alarmaSonoraCanceladaPorUsuario = false;
 //////////////////////////////
 
 // ACCESS POINT //////////////
@@ -125,8 +133,8 @@ void setup() {
   // setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
-  // setEstadoSinConexion();
-  setEstadoNormal();
+  setEstadoSinConexion();
+  // setEstadoNormal();
   
 }
 
@@ -148,27 +156,50 @@ void loop() {
     leerSensores();
     if (getGeneralStatus().equals(ALARM)) {
       setEstadoAlarma();
+      return;
     }
         
     digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
     enviarDatosAlServidor();
     digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
 
-    delay(10000);
+    while (esperar(ESPERA_ENTRE_ENVIO_DE_DATOS)) {
+      delay(10);  // Breve delay para no saturar el micro
+      
+      if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+        setEstadoApareamiento();
+        esperando = false;
+        break;
+      }
+    }
   }
 
   else if (estadoAlarma) {
 
-    titilar(ROJO);
-    sonarAlarmaPor(UN_MINUTO);
-
-    enviarDatosAlServidor();
-    
-    if (pulsadorEncendidoPor(TRES_SEGUNDOS)) {
+    leerSensores();
+    if (getGeneralStatus().equals(NORMAL)) {
       setEstadoNormal();
+      return;
     }
 
-    delay(10000);
+    digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
+    enviarDatosAlServidor();
+    digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
+
+    while (esperar(ESPERA_ENTRE_ENVIO_DE_DATOS)) {
+      delay(10);  // Breve delay para no saturar el micro
+
+      titilar(ROJO);
+
+      if (!alarmaSonoraCanceladaPorUsuario) {
+        tone(BUZZER, NOTE);
+      }
+      
+      if (pulsadorEncendidoPor(CINCO_SEGUNDOS)) {
+        alarmaSonoraCanceladaPorUsuario = true;
+        noTone(BUZZER);
+      }
+    }
   }
 
   else if (estadoSinConexion) {
@@ -229,6 +260,8 @@ void enviarDatosAlServidor() {
 
 void configAsAccessPoint() {
 
+    WiFi.disconnect(true);
+    
     Serial.println("Configuring access point...");
     WiFi.softAP(APssid, APpassword);
 
@@ -529,27 +562,61 @@ String generarJson() {
 }
 //////////////////////////////////////////////////////////////
 
-// PULSADOR //////////////////////////////////////////////////
+// DELAY NO BLOQUEANTE ///////////////////////////////////////
 
-boolean pulsadorEncendidoPor(int time) {
+boolean esperar(int tiempo) {
 
-  if (digitalRead(PULSADOR) == LOW) {
-    pulsadorEncendido = false;
-    return pulsadorEncendido;
-  }
-
-  if (!pulsadorEncendido) {
-    // Se encendió el pulsador por primera vez
-    tiempoInicioPulsadorEncendido = millis();
-    pulsadorEncendido = true;
+  if (!esperando) {
+    Serial.print("\nComienzo de la ESPERA de ");
+    Serial.print(tiempo);
+    Serial.println("ms.");
+    
+    esperando = true;
+    tiempoInicioEspera = millis();
 
   } else {
+  
+    if ((unsigned long)(millis() - tiempoInicioEspera) >= tiempo) {
+  
+        Serial.println("\nESPERA finalizada.");
+        esperando = false;
+    }
+  }
 
-    // Chequeamos si el tiempo que el pulsador estuvo apretado es igual o mayor al tiempo que queremos medir
-    if ((unsigned long)(millis() - tiempoInicioPulsadorEncendido) >= time) {
+  return esperando;
+}
+
+//////////////////////////////////////////////////////////////
+
+// PULSADOR //////////////////////////////////////////////////
+
+boolean pulsadorEncendidoPor(int tiempo) {
+
+  if (digitalRead(PULSADOR) == HIGH) {
+    pulsadorEncendido = false;
+    return pulsadorEncendido;
+  
+  } else if (digitalRead(PULSADOR) == LOW) {
       
-      pulsadorEncendido = false;  // Reseteamos la variable aún si la persona está apretando el botón, por consistencia
-      return true;
+    if (!pulsadorEncendido) {
+      Serial.println("\nSe apretó el PULSADOR.");
+      
+      // Se encendió el pulsador por primera vez
+      tiempoInicioPulsadorEncendido = millis();
+      pulsadorEncendido = true;
+  
+    } else {
+  
+      // Chequeamos si el tiempo que el pulsador estuvo apretado es igual o mayor al tiempo que queremos medir
+      if ((unsigned long)(millis() - tiempoInicioPulsadorEncendido) >= tiempo) {
+  
+        Serial.print("\nPaso un tiempo mayor a ");
+        Serial.print(tiempo);
+        Serial.println("ms con el PULSADOR apretado.");
+        
+        pulsadorEncendido = false;  // Reseteamos la variable aún si la persona está apretando el botón, por consistencia
+        return true;
+      }
     }
   }
 
@@ -565,7 +632,7 @@ void apagarAlarmaSonora() {
 }
 
 // Esto es para poder hacer sonar la alarma por más de 20 segundos sin bloquear el thread, ya que tone no funciona con más de este tiempo
-void sonarAlarmaPor(int time) {
+void sonarAlarmaPor(int tiempo) {
 
     if (!alarmaSonoraEncendida) {
       millisAlEncenderAlarma = millis();
@@ -575,7 +642,7 @@ void sonarAlarmaPor(int time) {
       tone(BUZZER, NOTE);
     } else {
       
-      if ((unsigned long)(currentMillis - millisAlEncenderAlarma) >= time) {
+      if ((unsigned long)(currentMillis - millisAlEncenderAlarma) >= tiempo) {
         
         noTone(BUZZER);
         
@@ -656,6 +723,7 @@ void setEstadoNormal() {
   // CU 11
   ledVerde();
   noTone(BUZZER);   // Apagar alarma si suena
+  tone(BUZZER, NOTE, 200);  // Beep para marcar el cambio
 }
 
 void setEstadoSinConexion() {
@@ -686,7 +754,7 @@ void setEstadoApareamiento() {
 
   // Ya hacemos titilar el led, ya que configurar como access point lleva un tiempo, y sino obligamos al usuario a seguir apretando el pulsador
   titilar(AMARILLO);
-  tone(BUZZER, NOTE, 200);
+  tone(BUZZER, NOTE, 200);  // Beep para marcar el cambio
   configAsAccessPoint();
 }
 
@@ -719,9 +787,12 @@ void setEstadoAlarma() {
   estadoDefectuoso = false;
   estadoAlarma = true;
 
+  // Reseteamos por si el usuario canceló la alarma anteriormente
+  alarmaSonoraCanceladaPorUsuario = false;
+
   // Ya cambiamos esto por los diez segundos de espera del estado normal
-  titilar(ROJO);
-  sonarAlarmaPor(UN_MINUTO);
+/*  titilar(ROJO);
+  tone(BUZZER, NOTE); */
 }
 
 ///////////////////////////////////////////////////////////////
