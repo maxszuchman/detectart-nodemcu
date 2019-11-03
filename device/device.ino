@@ -12,8 +12,6 @@
 const unsigned long UN_MINUTO = 60000;
 const unsigned long CINCO_SEGUNDOS = 5000;
 const unsigned long TRES_SEGUNDOS = 3000;
-
-const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
 //////////////////////////////
 
 // DELAY NO BLOQUEANTE ///////
@@ -58,6 +56,8 @@ bool alarmaSonoraCanceladaPorUsuario = false;
 // ACCESS POINT //////////////
 #define APSSID "EXPERTA_"
 #define APPSK  "123456789"  // 8 CARACTERES COMO MINIMO!!!
+#define CHANNEL 10
+
 char APssid[40];
 const char *APpassword = APPSK;
 byte mac[6];
@@ -69,8 +69,10 @@ String SSID_TO_CONNECT;
 String PASSWORD;
 /////////////////////////////////
 
-// ENDPOINT A ENVIAR DATOS //////
+// CONFIGURACIÓN CLIENTE   //////
 const String URL = "http://still-shelf-00010.herokuapp.com/deviceData/";
+const int MAX_NUM_OF_CONNECTING_RETRIES = 30;
+const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
 /////////////////////////////////
 
 // MULTIPLEXOR //////////////////
@@ -130,12 +132,15 @@ void setup() {
   
   delay(1000);
 
+  beep();
+// Cargamos json con los datos de conexión de la memoria persistente e intentamos conectar a Internet
+  loadJsonAndConnectToWiFi();
+  
   // setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
-  setEstadoSinConexion();
+  // setEstadoSinConexion();
   // setEstadoNormal();
-  
 }
 
 void loop() {
@@ -160,7 +165,10 @@ void loop() {
     }
         
     digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
-    enviarDatosAlServidor();
+    if (!enviarDatosAlServidor()) {
+      setEstadoSinConexion();
+      return;
+    }
     digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
 
     while (esperar(ESPERA_ENTRE_ENVIO_DE_DATOS)) {
@@ -213,7 +221,15 @@ void loop() {
   
 }
 
-void enviarDatosAlServidor() {
+void loadJsonAndConnectToWiFi() {
+  if (loadConfig() && connectToWiFi()) {
+    setEstadoNormal();  
+  } else {
+    setEstadoApareamiento();
+  }
+}
+
+boolean enviarDatosAlServidor() {
 
     Serial.println("\n[HTTP] Sending a POST request to " + URL);
     
@@ -243,7 +259,7 @@ void enviarDatosAlServidor() {
       } else {
 
         Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
-        setEstadoSinConexion(); 
+        return false;
       }
   
       http.end();
@@ -251,11 +267,10 @@ void enviarDatosAlServidor() {
     } else {
       Serial.printf("[HTTP] Unable to connect\n");
       
-      // CU 16
-      tone(BUZZER, NOTE, 5000);
-      setEstadoSinConexion();
+      return false;
     }
-  
+
+    return true;
 }
 
 void configAsAccessPoint() {
@@ -263,7 +278,7 @@ void configAsAccessPoint() {
     WiFi.disconnect(true);
     
     Serial.println("Configuring access point...");
-    WiFi.softAP(APssid, APpassword);
+    WiFi.softAP(APssid, APpassword, CHANNEL, false);
 
     Serial.print("Access Point SSID: ");
     Serial.println(APssid);
@@ -324,20 +339,16 @@ void handleConnectionData() {
   Serial.println("Data received, switching to Client Mode...");
 
   WiFi.softAPdisconnect(true);
-  
-  connectToWiFi();
+
+  loadJsonAndConnectToWiFi();
 }
 
 void returnFail(String msg) {
   server.send(500, "text/plain", msg + "\r\n");
 }
 
-void connectToWiFi() {
+boolean connectToWiFi() {
 
-    if (!loadConfig()) {
-      Serial.println("Unable to read config.json");
-      return;
-    }
     // showAvailableNetworks();
         
     Serial.println();
@@ -349,18 +360,27 @@ void connectToWiFi() {
     WiFi.begin(SSID_TO_CONNECT.c_str(), PASSWORD.c_str());
   
     Serial.printf("\nConectando a la red: %s\n", WiFi.SSID().c_str());
-    
-    while (WiFi.status() != WL_CONNECTED) { 
+
+    int retryNum = 1;
+    while (WiFi.status() != WL_CONNECTED && retryNum <= MAX_NUM_OF_CONNECTING_RETRIES) { 
         ledAmarillo();
         delay(250);
         Serial.print(WiFi.status()); 
         ledApagado();
         delay(250);
+        retryNum++;
     }
-    Serial.println("");
-    Serial.println("WiFi conectada");
 
-    setEstadoNormal();
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nWiFi conectada");
+      Serial.println(WiFi.SSID().c_str());
+      Serial.println(WiFi.localIP());
+      return true;
+    } else {
+      Serial.print("\nERROR conectándose a la red ");
+      Serial.println(SSID_TO_CONNECT.c_str());
+      return false;
+    }
 }
 
 bool saveConfig(String ssid, String password) {
@@ -401,7 +421,7 @@ bool loadConfig() {
 
   File configFile = SPIFFS.open("/config.json", "r");
   if (!configFile) {
-    Serial.println("Failed to open config file.");
+    Serial.println("\nFailed to open config file.");
     return false;
   }
 
@@ -627,6 +647,10 @@ boolean pulsadorEncendidoPor(int tiempo) {
 
 // INDICADOR SONORO //////////////////////////////////////////
 
+void beep() {
+  tone(BUZZER, NOTE, 200);
+}
+
 void apagarAlarmaSonora() {
   alarmaSonoraEncendida = false;  
 }
@@ -723,7 +747,7 @@ void setEstadoNormal() {
   // CU 11
   ledVerde();
   noTone(BUZZER);   // Apagar alarma si suena
-  tone(BUZZER, NOTE, 200);  // Beep para marcar el cambio
+  beep();
 }
 
 void setEstadoSinConexion() {
@@ -739,6 +763,9 @@ void setEstadoSinConexion() {
 
   // CU 12
   ledAmarillo();  
+
+  // CU 16
+  tone(BUZZER, NOTE, 5000);
 }
 
 void setEstadoApareamiento() {
@@ -754,7 +781,7 @@ void setEstadoApareamiento() {
 
   // Ya hacemos titilar el led, ya que configurar como access point lleva un tiempo, y sino obligamos al usuario a seguir apretando el pulsador
   titilar(AMARILLO);
-  tone(BUZZER, NOTE, 200);  // Beep para marcar el cambio
+  beep();
   configAsAccessPoint();
 }
 
@@ -789,10 +816,6 @@ void setEstadoAlarma() {
 
   // Reseteamos por si el usuario canceló la alarma anteriormente
   alarmaSonoraCanceladaPorUsuario = false;
-
-  // Ya cambiamos esto por los diez segundos de espera del estado normal
-/*  titilar(ROJO);
-  tone(BUZZER, NOTE); */
 }
 
 ///////////////////////////////////////////////////////////////
