@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
 #include "FS.h"
 #include <Adafruit_NeoPixel.h>
+#include "WifiLocation.h"
 
 #define PinLED 2
 
@@ -75,6 +76,12 @@ const int MAX_NUM_OF_CONNECTING_RETRIES = 30;
 const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
 /////////////////////////////////
 
+// API GEOLOCALIZACIÓN GOOGLE ///
+// IMPORTANTE: Versión gratiuta admite 2500 consultas x día.
+// https://console.cloud.google.com/apis/credentials?project=detectart-6554a&supportedpurview=project para configurar la api key
+String GOOGLE_API_KEY = "AIzaSyC2ThHjdah6a5AAIimVhi4sFTFvxuav7os";
+/////////////////////////////////
+
 // MULTIPLEXOR //////////////////
 const int muxSIG = A0;
 const int muxS0 = D5;
@@ -84,17 +91,23 @@ const int muxS3 = D8;
 const int SENSORS_LENGTH = 2;
 /////////////////////////////////
 
-// SENSORES /////////////////////
+// POSICION /////////////////////
+  double latitude = 0.0;
+  double longitude = 0.0;
+  double accuracy = 0.0;
+/////////////////////////////////
+
+// SENSORES //////////////////////////
 int sensors[] = {0,0};
 
 // UMBRALES ///////////////
 const int umbralCO = 1000;
 const int umbralGAS = 950;
 
-// CONSTANTES DE ESTADO ///
+// CONSTANTES DE ESTADO DE SENSORES //
 const char *NORMAL = "NORMAL";
 const char *ALARM = "ALARM";
-/////////////////////////////////
+//////////////////////////////////////
 
 // CONSTANTES DE ESTADO /////////
 bool estadoNormal;
@@ -135,6 +148,8 @@ void setup() {
   beep();
 // Cargamos json con los datos de conexión de la memoria persistente e intentamos conectar a Internet
   loadJsonAndConnectToWiFi();
+
+  getGoogleGeolocation();
   
   // setEstadoApareamiento();
   // setEstadoDefectuoso();
@@ -549,9 +564,9 @@ String generarJson() {
   String salida;
 
   StaticJsonDocument<512> pos;
-  pos["latitude"] = 32.123;
-  pos["longitude"] = 2.3;
-  pos["accuracy"] = 80;
+  pos["latitude"] = latitude;
+  pos["longitude"] = longitude;
+  pos["accuracy"] = accuracy;
   
   StaticJsonDocument<512> sensor1;
   sensor1["type"] = "CO";
@@ -579,6 +594,28 @@ String generarJson() {
   serializeJsonPretty(json, salida);
 
   return salida;
+}
+//////////////////////////////////////////////////////////////
+
+// API GEOLOCALIZACIÓN GOOGLE ////////////////////////////////
+
+void getGoogleGeolocation() {
+
+  Serial.println("\nTomando datos de localización de la api de Google...");
+  
+  WifiLocation location(GOOGLE_API_KEY);
+  location_t loc = location.getGeoFromWiFi();
+  latitude = loc.lat;
+  longitude = loc.lon;
+  accuracy = loc.accuracy;
+  
+  Serial.print("Latitud: ");
+  Serial.println(latitude);
+  Serial.print("Longitud: ");
+  Serial.println(longitude);
+  Serial.print("Precisión: ");
+  Serial.println(accuracy);
+  Serial.println();
 }
 //////////////////////////////////////////////////////////////
 
