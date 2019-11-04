@@ -78,8 +78,8 @@ const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
 
 // API GEOLOCALIZACIÓN GOOGLE ///
 // IMPORTANTE: Versión gratiuta admite 2500 consultas x día.
-// https://console.cloud.google.com/apis/credentials?project=detectart-6554a&supportedpurview=project para configurar la api key
-String GOOGLE_API_KEY = "AIzaSyC2ThHjdah6a5AAIimVhi4sFTFvxuav7os";
+// https://console.cloud.google.com/apis/credentials?project=experta-c43ae para configurar la api key
+String GOOGLE_API_KEY = "AIzaSyB25W77r8umo8iaBvYktNLFfoqr74SxFaw";
 /////////////////////////////////
 
 // MULTIPLEXOR //////////////////
@@ -149,8 +149,6 @@ void setup() {
 // Cargamos json con los datos de conexión de la memoria persistente e intentamos conectar a Internet
   loadJsonAndConnectToWiFi();
 
-  getGoogleGeolocation();
-  
   // setEstadoApareamiento();
   // setEstadoDefectuoso();
   // setEstadoAlarma();
@@ -238,6 +236,7 @@ void loop() {
 
 void loadJsonAndConnectToWiFi() {
   if (loadConfig() && connectToWiFi()) {
+    getGoogleGeolocation();
     setEstadoNormal();  
   } else {
     setEstadoApareamiento();
@@ -364,13 +363,15 @@ void returnFail(String msg) {
 
 boolean connectToWiFi() {
 
-    // showAvailableNetworks();
+    showAvailableNetworks();
         
     Serial.println();
     Serial.printf("SSID to connect to: %s\n", SSID_TO_CONNECT.c_str());
     Serial.printf("Password: %s\n", PASSWORD.c_str());
     Serial.printf("Sending data to: %s\n", URL.c_str());
 
+    WiFi.setPhyMode( WIFI_PHY_MODE_11B ); // WIFI_PHY_MODE_11G / WIFI_PHY_MODE_11N 
+    WiFi.persistent(false);
     WiFi.disconnect(true);
     WiFi.begin(SSID_TO_CONNECT.c_str(), PASSWORD.c_str());
   
