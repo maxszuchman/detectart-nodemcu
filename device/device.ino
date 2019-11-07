@@ -73,6 +73,7 @@ String PASSWORD;
 // CONFIGURACIÓN CLIENTE   //////
 const String URL = "http://still-shelf-00010.herokuapp.com/deviceData/";
 const int MAX_NUM_OF_CONNECTING_RETRIES = 30;
+const int CONNECTING_RETRIES_EN_ESTADO_SIN_CONEXION = 12;
 const unsigned long ESPERA_ENTRE_ENVIO_DE_DATOS = 10000;
 /////////////////////////////////
 
@@ -230,12 +231,19 @@ void loop() {
       setEstadoApareamiento();
       return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
     }
+
+    if (WiFi.status() != WL_CONNECTED) {
+      connectToWiFi(CONNECTING_RETRIES_EN_ESTADO_SIN_CONEXION, false);
+    } else {
+      if (enviarDatosAlServidor()) {
+        setEstadoNormal();
+      }
+    }
   }
-  
 }
 
 void loadJsonAndConnectToWiFi() {
-  if (loadConfig() && connectToWiFi()) {
+  if (loadConfig() && connectToWiFi(MAX_NUM_OF_CONNECTING_RETRIES, true)) {
     getGoogleGeolocation();
     setEstadoNormal();  
   } else {
@@ -361,7 +369,7 @@ void returnFail(String msg) {
   server.send(500, "text/plain", msg + "\r\n");
 }
 
-boolean connectToWiFi() {
+boolean connectToWiFi(int retries, boolean titilar) {
 
     showAvailableNetworks();
         
@@ -378,12 +386,18 @@ boolean connectToWiFi() {
     Serial.printf("\nConectando a la red: %s\n", WiFi.SSID().c_str());
 
     int retryNum = 1;
-    while (WiFi.status() != WL_CONNECTED && retryNum <= MAX_NUM_OF_CONNECTING_RETRIES) { 
-        ledAmarillo();
-        delay(250);
+    while (WiFi.status() != WL_CONNECTED && retryNum <= retries) { 
+        if (titilar) {
+          ledAmarillo();
+          delay(250);
+        }
         Serial.print(WiFi.status()); 
-        ledApagado();
-        delay(250);
+
+        if (titilar) {
+          ledApagado();
+          delay(250);          
+        }
+
         retryNum++;
     }
 
