@@ -235,15 +235,20 @@ void loop() {
     if (WiFi.status() != WL_CONNECTED) {
       connectToWiFi(CONNECTING_RETRIES_EN_ESTADO_SIN_CONEXION, false);
     } else {
+      
       if (enviarDatosAlServidor()) {
         setEstadoNormal();
       }
+
+      delay(TRES_SEGUNDOS);
     }
   }
 }
 
 void loadJsonAndConnectToWiFi() {
-  if (loadConfig() && connectToWiFi(MAX_NUM_OF_CONNECTING_RETRIES, true)) {
+  ledAmarillo();  // Sin conexión
+  
+  if (loadConfig() && connectToWiFi(MAX_NUM_OF_CONNECTING_RETRIES, false)) {
     getGoogleGeolocation();
     setEstadoNormal();  
   } else {
@@ -389,14 +394,15 @@ boolean connectToWiFi(int retries, boolean titilar) {
     while (WiFi.status() != WL_CONNECTED && retryNum <= retries) { 
         if (titilar) {
           ledAmarillo();
-          delay(250);
         }
+
+        delay(250);
         Serial.print(WiFi.status()); 
 
         if (titilar) {
           ledApagado();
-          delay(250);          
         }
+        delay(250);
 
         retryNum++;
     }
