@@ -100,6 +100,7 @@ const int SENSORS_LENGTH = 2;
 
 // SENSORES //////////////////////////
 int sensors[] = {0,0};
+#define S_HUMO D4
 
 // UMBRALES ///////////////
 const int umbralCO = 1000;
@@ -138,6 +139,8 @@ void setup() {
   ////////////////////////////////////////////////
    
   pinMode(PULSADOR, INPUT);
+  // PinMode HUMO
+  pinMode(S_HUMO, INPUT);
 
   // CONFIGURAR NOMBRE DE SSID DINÁMICAMENTE Y TOMAR LA MAC COMO STRING
   configSSID();
@@ -536,6 +539,7 @@ void leerSensores() {
         Serial.print(sensors[i]);
         Serial.print("\t");
     }
+    Serial.print(getSmoke());
     Serial.println();
 }
 
@@ -547,9 +551,8 @@ int getGas() {
   return sensors[1];
 }
 
-// TODO IMPLEMENTAR!
 int getSmoke() {
-  return 0;
+  return digitalRead(S_HUMO);
 }
 
 String getCOStatus() {
@@ -568,9 +571,12 @@ String getGasStatus() {
   }
 }
 
-// TODO IMPLEMENTAR!
 String getSmokeStatus() {
-  return NORMAL;
+  if (getSmoke() == LOW) {
+    return ALARM;
+  } else {
+    return NORMAL;
+  }
 }
 
 String getGeneralStatus() {
@@ -602,7 +608,7 @@ String generarJson() {
   StaticJsonDocument<512> sensor3;
   sensor3["type"] = "SMOKE";
   sensor3["status"] = getSmokeStatus();
-  sensor3["level"] = 0;
+  sensor3["level"] = getSmoke() == 1? 0 : 1;
 
   StaticJsonDocument<1024> json;
   json["macAddress"] = macString;
