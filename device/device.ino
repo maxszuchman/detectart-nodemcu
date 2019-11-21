@@ -165,7 +165,9 @@ void loop() {
   if (estadoApareamiento) {
 
     // Leemos sensores aún en estado Apareamiento
-    if (leerSensoresYActivarAlarmaSiEsNecesario(false)) return;
+/*    if (leerSensoresYActivarAlarmaSiEsNecesario(false)) {
+      return;
+    } */
     
     titilar(AMARILLO);
     server.handleClient();  
@@ -178,7 +180,9 @@ void loop() {
       return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
     }
 
-    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) return;
+    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) {
+      return;
+    }
         
     digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
     if (!enviarDatosAlServidor()) {
@@ -235,7 +239,9 @@ void loop() {
     }
 
     // Leemos sensores aún en estado sin conexión
-    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) return;
+    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) {
+      return;
+    }
     
     if (WiFi.status() != WL_CONNECTED) {
       connectToWiFi(CONNECTING_RETRIES_EN_ESTADO_SIN_CONEXION, false);
