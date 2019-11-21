@@ -164,6 +164,9 @@ void loop() {
 
   if (estadoApareamiento) {
 
+    // Leemos sensores aún en estado Apareamiento
+    if (leerSensoresYActivarAlarmaSiEsNecesario(false)) return;
+    
     titilar(AMARILLO);
     server.handleClient();  
   } 
@@ -175,11 +178,7 @@ void loop() {
       return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
     }
 
-    leerSensores();
-    if (getGeneralStatus().equals(ALARM)) {
-      setEstadoAlarma();
-      return;
-    }
+    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) return;
         
     digitalWrite(PinLED, LOW); // Está al revés para prender el led interno
     if (!enviarDatosAlServidor()) {
@@ -201,7 +200,7 @@ void loop() {
 
   else if (estadoAlarma) {
 
-    leerSensores();
+    leerSensores(true);
     if (getGeneralStatus().equals(NORMAL)) {
       setEstadoNormal();
       return;
@@ -212,7 +211,7 @@ void loop() {
     digitalWrite(PinLED, HIGH); // Está al revés para prender el led interno
 
     while (esperar(ESPERA_ENTRE_ENVIO_DE_DATOS)) {
-      delay(10);  // Breve delay para no saturar el micro
+      delay(10);
 
       titilar(ROJO);
 
@@ -235,6 +234,9 @@ void loop() {
       return; // Salimos del loop para que tome el cambio de estado y entre en el flujo de estadoApareamiento
     }
 
+    // Leemos sensores aún en estado sin conexión
+    if (leerSensoresYActivarAlarmaSiEsNecesario(true)) return;
+    
     if (WiFi.status() != WL_CONNECTED) {
       connectToWiFi(CONNECTING_RETRIES_EN_ESTADO_SIN_CONEXION, false);
     } else {
@@ -246,6 +248,16 @@ void loop() {
       delay(TRES_SEGUNDOS);
     }
   }
+}
+
+bool leerSensoresYActivarAlarmaSiEsNecesario(bool mostrarLog) {
+    leerSensores(mostrarLog);
+    if (getGeneralStatus().equals(ALARM)) {
+      setEstadoAlarma();
+      return true;
+    }  
+
+    return false;
 }
 
 void loadJsonAndConnectToWiFi() {
@@ -307,8 +319,14 @@ void configAsAccessPoint() {
 
     WiFi.disconnect(true);
     
-    Serial.println("Configuring access point...");
-    WiFi.softAP(APssid, APpassword, CHANNEL, false);
+    Serial.print("Configuring access point");
+    bool accessPointWorking = false;
+    while (!accessPointWorking) {
+      accessPointWorking = WiFi.softAP(APssid, APpassword, CHANNEL, false);
+      Serial.print(".");
+      delay(200);
+    }
+    Serial.println();
 
     Serial.print("Access Point SSID: ");
     Serial.println(APssid);
@@ -361,12 +379,12 @@ void handleConnectionData() {
   } else {
     return returnFail("BAD ARGS");
   }
-  
+
   server.send(200, "text/plain", "OK");
-  saveConfig(ssid, password);
   
   Serial.println();
   Serial.println("Data received, switching to Client Mode...");
+  saveConfig(ssid, password);
 
   WiFi.softAPdisconnect(true);
 
@@ -379,7 +397,7 @@ void returnFail(String msg) {
 
 boolean connectToWiFi(int retries, boolean titilar) {
 
-    showAvailableNetworks();
+    // showAvailableNetworks();
         
     Serial.println();
     Serial.printf("SSID to connect to: %s\n", SSID_TO_CONNECT.c_str());
@@ -528,19 +546,25 @@ void setMuxChannel(byte channel) {
    //digitalWrite(muxS3, bitRead(channel, 3));
 }
 
-void leerSensores() {
+void leerSensores(bool mostrarLog) {
 
-    Serial.println("\nLeyendo sensores: ");
+    if (mostrarLog) Serial.println("\nLeyendo sensores: ");
     for (byte i = 0; i < SENSORS_LENGTH; i++) {
         setMuxChannel(i);
         sensors[i] = analogRead(muxSIG);
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(sensors[i]);
-        Serial.print("\t");
+
+        if (mostrarLog) {
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.print(sensors[i]);
+          Serial.print("\t");          
+        }
     }
-    Serial.print(getSmoke());
-    Serial.println();
+
+    if (mostrarLog) {
+      Serial.print(getSmoke());
+      Serial.println();      
+    }
 }
 
 int getCO() {
