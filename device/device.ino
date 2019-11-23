@@ -120,8 +120,6 @@ bool estadoAlarma;
 /////////////////////////////////
 
 ESP8266WebServer server(80);
-WiFiClient client;
-HTTPClient http;
 
 void setup() {
   // INICIALIZAR INDICADOR LUMÍNICO ////
@@ -249,6 +247,7 @@ void loop() {
       
       if (enviarDatosAlServidor()) {
         setEstadoNormal();
+        return;
       }
 
       delay(TRES_SEGUNDOS);
@@ -277,8 +276,12 @@ void loadJsonAndConnectToWiFi() {
   }
 }
 
-boolean enviarDatosAlServidor() {
+bool enviarDatosAlServidor() {
 
+    bool ok = false;
+    WiFiClient client;
+    HTTPClient http;
+    
     Serial.println("\n[HTTP] Sending a POST request to " + URL);
     
     if (http.begin(client, URL.c_str())) {  // HTTP
@@ -290,15 +293,17 @@ boolean enviarDatosAlServidor() {
       
       // start connection and send HTTP header
       int httpCode = http.POST(body);
+      String payload = http.getString();
+      http.end();
   
       // httpCode will be negative on error
       if (httpCode > 0) {
+        ok = true;
         // HTTP header has been send and Server response header has been handled
         Serial.printf("[HTTP] Response Status Code: %d\n", httpCode);
   
         // file found at server
-        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-          String payload = http.getString();
+        if (httpCode == HTTP_CODE_OK) {
           Serial.println("[HTTP] Response: " + payload);
         } else if (httpCode == HTTP_CODE_NOT_FOUND) {
           Serial.println("[HTTP] POST Devolvió HTTP Status 404 Not Found, el dispositivo no fue vinculado a un User todavía.");
@@ -307,18 +312,15 @@ boolean enviarDatosAlServidor() {
       } else {
 
         Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
-        return false;
       }
   
-      http.end();
-  
     } else {
-      Serial.printf("[HTTP] Unable to connect\n");
-      
-      return false;
+      Serial.println("[HTTP] Unable to connect");
     }
 
-    return true;
+    Serial.print("enviarDatosAlServidor() devolviendo ");
+    Serial.println(ok);
+    return ok;
 }
 
 void configAsAccessPoint() {
@@ -832,6 +834,10 @@ void ledApagado() {
 // SETTERS PARA LOS ESTADOS DEL DISPOSITIVO //////////////////
 
 void setEstadoNormal() {
+  Serial.println("\n---------------------------------------");
+  Serial.println("             ESTADO NORMAL             ");
+  Serial.println("---------------------------------------");
+
   estadoNormal = true;
   estadoSinConexion = false;
   estadoApareamiento = false;
